@@ -159,7 +159,6 @@ function Save-VsSetupDiagnostics([int] $ExitCode, [datetime] $Started) {
     } catch { $lines.Add("RAM detection unavailable: $($_.Exception.Message)") }
 
     try {
-        $driveLetter = $env:SystemDrive.TrimEnd(':','\')
         $disk = Get-CimInstance -ClassName Win32_LogicalDisk -Filter "DeviceID='$($env:SystemDrive)'" -ErrorAction Stop
         $space = [math]::Round(([double] $disk.FreeSpace / 1GB), 1)
         $lines.Add("Free space on $($env:SystemDrive): $space GB")
@@ -190,8 +189,7 @@ function Save-VsSetupDiagnostics([int] $ExitCode, [datetime] $Started) {
         try {
             # Keep a small, relevant excerpt instead of copying potentially
             # sensitive complete Visual Studio setup logs.
-            $matches = @(Select-String -LiteralPath $log.FullName -Pattern
-                '5007|requirement|prerequisit|blocked|not supported|unsupported|error|fail|disk|space|memory|OS version' |
+            $matches = @(Select-String -LiteralPath $log.FullName -Pattern '5007|requirement|prerequisit|blocked|not supported|unsupported|error|fail|disk|space|memory|OS version' |
                 Select-Object -Last 35)
             foreach ($match in $matches) {
                 $snippet = $match.Line.Trim()
