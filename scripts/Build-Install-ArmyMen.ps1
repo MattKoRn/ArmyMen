@@ -136,6 +136,80 @@ function Test-MfcFromIncludePath {
     return $false
 }
 
+function Save-VsSetupDiagnostics([int] $ExitCode, [datetime] $Started) {
+    $out = Join-Path $Root 'AI_TAKEOVER_SETUP_DIAGNOSTICS.txt'
+    $lines = New-Object System.Collections.Generic.List[string]
+    $lines.Add("Visual Studio Installer failure: exit code $ExitCode")
+    $lines.Add("UTC recorded: $([datetime]::UtcNow.ToString('u'))")
+    $lines.Add('Microsoft code 5007 = operation blocked; computer does not meet requirements.')
+    $lines.Add('https://learn.microsoft.com/en-us/visualstudio/install/use-command-line-parameters-to-install-visual-studio')
+    $lines.Add('')
+
+    try {
+        $os = Get-ItemProperty -Path 'HKLM:\SOFTWARE\Microsoft\Windows NT\CurrentVersion'
+        $lines.Add("Windows: $($os.ProductName); version $($os.DisplayVersion); build $($os.CurrentBuildNumber).$($os.UBR)")
+        $lines.Add("64-bit Windows: $([Environment]::Is64BitOperatingSystem)")
+    } catch { $lines.Add("Windows details unavailable: $($_.Exception.Message)") }
+
+    try {
+        $ram = Get-CimInstance -ClassName Win32_ComputerSystem -ErrorAction Stop
+        $gb = [math]::Round(([double] $ram.TotalPhysicalMemory / 1GB), 1)
+        $lines.Add("Physical memory: $gb GB")
+        if ($gb -lt 4) { $lines.Add('WARNING: Visual Studio 2022 requires at least 4GB RAM.') }
+    } catch { $lines.Add("RAM detection unavailable: $($_.Exception.Message)") }
+
+    try {
+        $driveLetter = $env:SystemDrive.TrimEnd(':','\')
+        $disk = Get-CimInstance -ClassName Win32_LogicalDisk -Filter "DeviceID='$($env:SystemDrive)'" -ErrorAction Stop
+        $space = [math]::Round(([double] $disk.FreeSpace / 1GB), 1)
+        $lines.Add("Free space on $($env:SystemDrive): $space GB")
+        if ($space -lt 10) {
+            $lines.Add('WARNING: Less than 10GB free. Visual Studio components may require significantly more free space.')
+        }
+    } catch { $lines.Add("Disk detection unavailable: $($_.Exception.Message)") }
+
+    $lines.Add('')
+    $lines.Add('Recent Microsoft setup log excerpts, if available:')
+    $allLogs = @()
+    $tempRoot = [IO.Path]::GetTempPath()
+    foreach ($pattern in @('dd_setup_*.log', 'dd_client_*.log',
+                           'dd_bootstrapper_*.log', 'dd_installer_*.log')) {
+        $allLogs += @(Get-ChildItem -Path (Join-Path $tempRoot $pattern) -File -ErrorAction SilentlyContinue)
+    }
+    $recent = @($allLogs | Where-Object {
+        $_.LastWriteTime -ge $Started.AddMinutes(-2)
+    } | Sort-Object LastWriteTime -Descending | Select-Object -First 5)
+    if ($recent.Count -eq 0) {
+        $recent = @($allLogs | Sort-Object LastWriteTime -Descending |
+                     Select-Object -First 3)
+        $lines.Add('No current setup logs found; showing latest available logs.')
+    }
+    foreach ($log in $recent) {
+        $lines.Add('')
+        $lines.Add("== $($log.Name) ($($log.LastWriteTime)) ==")
+        try {
+            # Keep a small, relevant excerpt instead of copying potentially
+            # sensitive complete Visual Studio setup logs.
+            $matches = @(Select-String -LiteralPath $log.FullName -Pattern
+                '5007|requirement|prerequisit|blocked|not supported|unsupported|error|fail|disk|space|memory|OS version' |
+                Select-Object -Last 35)
+            foreach ($match in $matches) {
+                $snippet = $match.Line.Trim()
+                if ($snippet.Length -gt 350) { $snippet = $snippet.Substring(0,350) + '...' }
+                $lines.Add("line $($match.LineNumber): $snippet")
+            }
+            if ($matches.Count -eq 0) {
+                $lines.Add('No matching lines; inspect the full log locally in TEMP.')
+            }
+        } catch { $lines.Add("Could not read log: $($_.Exception.Message)") }
+    }
+    $lines.Add('')
+    $lines.Add('Warning: log excerpts may contain local file paths. Review before sharing.')
+    [IO.File]::WriteAllLines($out, [string[]] $lines, [Text.Encoding]::UTF8)
+    Info "Setup diagnostics saved: $out"
+    return $out
+}
+
 function Install-MissingMfc([string] $VsRoot) {
     if (-not $VsRoot) {
         throw 'MFC (afxwin.h) is missing and no Visual Studio installation could be located.'
@@ -171,11 +245,25 @@ function Install-MissingMfc([string] $VsRoot) {
         }
     }
     Info "Installing MFC component: $component"
+    Info 'Opening interactive Visual Studio Installer (not passive mode).'
+    Info 'Approve the Windows administrator prompt and finish the installer if asked.'
     $arguments = @('modify', '--installPath', ('"' + $VsRoot + '"'),
-                   '--add', $component, '--passive', '--norestart')
-    $process = Start-Process -FilePath $installer -ArgumentList $arguments -Wait -PassThru
+                   '--add', $component)
+    $started = Get-Date
+    try {
+        # Standard users cannot use Visual Studio's --passive or --quiet
+        # modifiers programmatically. Interactive elevation lets the setup
+        # interface show any unmet machine requirement instead of hiding it.
+        $process = Start-Process -FilePath $installer -ArgumentList $arguments -Wait -PassThru -Verb RunAs
+    } catch {
+        throw "Visual Studio setup could not start or elevation was cancelled: $($_.Exception.Message). Open the Visual Studio Installer application and select Modify > C++ MFC for v143 (x86/x64)."
+    }
     if ($process.ExitCode -notin @(0, 3010)) {
-        throw "Visual Studio Installer could not add MFC (exit code $($process.ExitCode)). Open Visual Studio Installer > Modify and enable C++ MFC for x86/x64 manually."
+        $diagnostics = Save-VsSetupDiagnostics $process.ExitCode $started
+        if ($process.ExitCode -eq 5007) {
+            throw "Visual Studio Installer blocked the MFC installation (5007: computer does not meet requirements). Check $diagnostics for Windows version, RAM, disk space and Microsoft setup log excerpts. The MFC header has NOT been installed; the original ArmyMen executable was preserved."
+        }
+        throw "Visual Studio Installer failed to add MFC (exit code $($process.ExitCode)). Check $diagnostics and the setup window for the actual cause."
     }
     if ($process.ExitCode -eq 3010) {
         Info 'MFC installation requested a reboot. Restart Windows before retrying if the header is still unavailable.'
