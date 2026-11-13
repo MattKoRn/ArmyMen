@@ -2,14 +2,19 @@
 
 This release turns the **local player's faction** into an AI-run army as soon as a mission starts. The human player watches the fight through an automatic, smoothly panning camera rather than issuing orders.
 
-## Install on Windows
+## Install on Windows (one click)
 
-1. Clone or download the `main` branch from `MattKoRn/ArmyMen`.
-2. In a Windows environment containing **NMAKE**, **cl.exe**, and the original game's compatible legacy VC++ / DirectX SDK dependencies, double-click **`INSTALL_AI_TAKEOVER.cmd`** at the repository root.
-3. The script builds `src/Armymen.mak` in Release configuration, backs up `src/RunTime/Armymen.exe` (if present), installs the patched executable, and launches the game.
-4. If compilation fails or the toolchain is unavailable, the script stops without replacing the original executable. Do not use the checked-in binary as evidence the patch is already compiled; that binary predates these changes.
+1. Clone or download the `main` branch of `MattKoRn/ArmyMen`.
+2. Double-click **`INSTALL_AI_TAKEOVER.cmd`** at the repository root. It calls `scripts/Build-Install-ArmyMen.ps1` using the included Windows PowerShell.
+3. The installer searches for an existing Visual Studio C++ build environment using Microsoft's `vswhere` and activates its x86 Developer Command Prompt. If NMAKE/Visual C++ tools are missing, it downloads the **official Microsoft Visual Studio 2022 Build Tools bootstrapper** from `https://aka.ms/vs/17/release/vs_buildtools.exe` and attempts to install the C++ workload and MFC components. Expect internet traffic, several GB of disk use, and a possible administrator permission prompt. This first-time setup may require a reboot.
+4. The script runs the legacy NMAKE **Win32 Release executable target** directly, avoiding the obsolete `bscmake` browser target. The compiler output is saved as `AI_TAKEOVER_BUILD.log` in the repo root.
+5. **Only if a patched executable is successfully compiled:** The script backs up the original `src/RunTime/Armymen.exe` as `Armymen.exe.before-ai-takeover`, installs the new binary, then launches ArmyMen. If tool installation, compilation or copying fails, the existing game executable is preserved.
 
-The script only `git pull --ff-only` when already on this feature branch. It does not force-reset your local changes. You can restore the previous executable from `Armymen.exe.before-ai-takeover`.
+**Important limitation:** The original game was built with Visual C++ 4.2 and a late-1990s DirectX SDK. Modern MSVC and Windows SDK installations provide NMAKE and a Win32 compiler, but may still fail to compile historic APIs, MFC usages, build flags or linkage. Fixing the *missing-NMAKE* failure does not mean a full modern-port build has been verified. Never substitute the checked-in historical EXE for a newly compiled AI-patched binary.
+
+Optional advanced flags (from PowerShell): `-NoPull` builds without a git update, `-SkipToolInstall` refuses automatic Build Tools installation, and `-NoLaunch` builds/installs without starting the game. The command file passes through these flags, for example `INSTALL_AI_TAKEOVER.cmd -NoPull -NoLaunch`.
+
+The script only uses `git pull --ff-only origin main` when already on `main`, and never force-resets local edits. You can restore the pre-mod executable from the `.before-ai-takeover` backup.
 
 ## Features and integration points
 
