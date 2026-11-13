@@ -40,7 +40,7 @@ function Find-VsDevCmd {
             $locations = @(& $vswhere @args 2>$null)
             foreach ($location in $locations) {
                 if (-not $location) { continue }
-                $path = Join-Path "$location".Trim() 'Common7\Tools\VsDevCmd.bat'
+                $path = Join-Path (("$location").Trim()) 'Common7\Tools\VsDevCmd.bat'
                 if (Test-Path -LiteralPath $path -PathType Leaf) { return $path }
             }
         }
@@ -133,7 +133,7 @@ try {
                 Info 'Checking for a fast-forward update to main (local edits are preserved)...'
                 & git -C $Root pull --ff-only origin main
                 if ($LASTEXITCODE -ne 0) {
-                    throw 'Git could not fast-forward main. Local changes are untouched. Use -NoPull to build offline.'
+                    Info 'Git update was unavailable. Continuing with local main checkout; no local changes were discarded.'
                 }
             } else {
                 Info "On branch '$current'; building the local checkout without switching branches."
@@ -195,8 +195,16 @@ try {
     )
     [IO.File]::WriteAllLines($temporaryCmd, $lines, [Text.Encoding]::ASCII)
     try {
-        & $temporaryCmd 2>&1 | Tee-Object -FilePath $BuildLog
-        $resultCode = $LASTEXITCODE
+        # Compiler diagnostics on stderr are expected output, not a reason
+        # for PowerShell 5 to throw before we can examine NMAKE's exit code.
+        $savedPreference = $ErrorActionPreference
+        $ErrorActionPreference = 'Continue'
+        try {
+            & $temporaryCmd 2>&1 | Tee-Object -FilePath $BuildLog
+            $resultCode = $LASTEXITCODE
+        } finally {
+            $ErrorActionPreference = $savedPreference
+        }
     } finally {
         Remove-Item -LiteralPath $temporaryCmd -ErrorAction SilentlyContinue
     }
