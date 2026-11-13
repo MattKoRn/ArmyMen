@@ -52,16 +52,27 @@ function Find-VsDevCmd {
         if (Test-Path -LiteralPath $path -PathType Leaf) { return $path }
     }
 
-    # Fallback if vswhere isn't available but a standard VS install exists.
-    foreach ($rootPath in @(
-        (Join-Path $pf 'Microsoft Visual Studio\2022'),
-        (Join-Path $pf 'Microsoft Visual Studio\2019'),
-        (Join-Path $pf86 'Microsoft Visual Studio\2019')
-    )) {
-        if (-not $rootPath -or -not (Test-Path -LiteralPath $rootPath -PathType Container)) { continue }
+    # Fallback for older installations without vswhere. A Developer Command
+    # Prompt alone does not prove the optional C++ tools were installed.
+    $roots = @()
+    if ($pf) {
+        $roots += (Join-Path $pf 'Microsoft Visual Studio\2022')
+        $roots += (Join-Path $pf 'Microsoft Visual Studio\2019')
+    }
+    if ($pf86) { $roots += (Join-Path $pf86 'Microsoft Visual Studio\2019') }
+    foreach ($rootPath in $roots) {
+        if (-not (Test-Path -LiteralPath $rootPath -PathType Container)) { continue }
         foreach ($edition in @('BuildTools','Community','Professional','Enterprise')) {
-            $path = Join-Path $rootPath ($edition + '\Common7\Tools\VsDevCmd.bat')
-            if (Test-Path -LiteralPath $path -PathType Leaf) { return $path }
+            $installPath = Join-Path $rootPath $edition
+            $path = Join-Path $installPath 'Common7\Tools\VsDevCmd.bat'
+            $toolsRoot = Join-Path $installPath 'VC\Tools\MSVC'
+            if (-not (Test-Path -LiteralPath $path -PathType Leaf) -or
+                -not (Test-Path -LiteralPath $toolsRoot -PathType Container)) { continue }
+            $toolsets = @(Get-ChildItem -LiteralPath $toolsRoot -Directory -ErrorAction SilentlyContinue)
+            foreach ($toolset in $toolsets) {
+                $compiler = Join-Path $toolset.FullName 'bin\Hostx64\x86\cl.exe'
+                if (Test-Path -LiteralPath $compiler -PathType Leaf) { return $path }
+            }
         }
     }
     return $null
@@ -81,6 +92,7 @@ function Install-MicrosoftBuildTools {
     Info 'The installer may request administrator permission and download several GB.'
     try {
         $ProgressPreference = 'SilentlyContinue'
+        [Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12
         Invoke-WebRequest -Uri $Uri -OutFile $installer -UseBasicParsing
         if ((Get-Item -LiteralPath $installer).Length -lt 100000) {
             throw 'The Microsoft installer download is unexpectedly small.'
