@@ -19,6 +19,7 @@ $BuiltExe = Join-Path $Source 'Release\Armymen.exe'
 $GameExe = Join-Path $RunTime 'Armymen.exe'
 $BackupExe = Join-Path $RunTime 'Armymen.exe.before-ai-takeover'
 $BuildLog = Join-Path $Root 'AI_TAKEOVER_BUILD.log'
+$DirectPlayInclude = Join-Path $Source 'third_party\directplay\include'
 
 function Info([string] $Message) { Write-Host "[ArmyMen] $Message" -ForegroundColor Cyan }
 
@@ -331,6 +332,13 @@ try {
         throw 'AI Takeover source is missing; download the updated main branch first.'
     }
 
+    foreach ($header in @('dplay.h', 'dplobby.h')) {
+        if (-not (Test-Path -LiteralPath (Join-Path $DirectPlayInclude $header) -PathType Leaf)) {
+            throw "Legacy DirectPlay header $header is missing from $DirectPlayInclude. Update the ArmyMen main branch first."
+        }
+    }
+    Info 'Bundled DirectPlay 3/4 compatibility headers found; no obsolete DirectX SDK installer required.'
+
     $devCmd = Find-VsDevCmd
     $pathReady = (Has-Command 'nmake.exe') -and (Has-Command 'cl.exe') -and
                  (Has-Command 'link.exe') -and (Has-Command 'rc.exe')
@@ -389,6 +397,9 @@ try {
         'where cl.exe >nul 2>nul || exit /b 83',
         'where link.exe >nul 2>nul || exit /b 84',
         'where rc.exe >nul 2>nul || exit /b 85',
+        # Set INCLUDE after VsDevCmd, because that batch file overwrites it.
+        # Windows CMD SET preserves spaces inside the quoted assignment.
+        ('set "INCLUDE=' + $DirectPlayInclude + ';%INCLUDE%"'),
         ('cd /d "' + $Source + '"'),
         ('nmake /f "Armymen.mak" CFG="ArmyMen - Win32 Release" ".\Release\Armymen.exe" > "' + $BuildLog + '" 2>&1'),
         'exit /b %ERRORLEVEL%'
