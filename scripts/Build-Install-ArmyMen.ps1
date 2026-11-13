@@ -145,10 +145,10 @@ function Install-MissingMfc([string] $VsRoot) {
     $pf = [Environment]::GetFolderPath('ProgramFiles')
     $candidates = @()
     if ($pf86) {
-        $candidates += Join-Path $pf86 'Microsoft Visual Studio\Installer\setup.exe'
+        $candidates += (Join-Path $pf86 'Microsoft Visual Studio\Installer\setup.exe')
     }
     if ($pf) {
-        $candidates += Join-Path $pf 'Microsoft Visual Studio\Installer\setup.exe'
+        $candidates += (Join-Path $pf 'Microsoft Visual Studio\Installer\setup.exe')
     }
     $installer = $candidates |
                  Where-Object { Test-Path -LiteralPath $_ -PathType Leaf } |
@@ -160,9 +160,19 @@ function Install-MissingMfc([string] $VsRoot) {
     Info 'MFC headers (afxwin.h) are missing from the active MSVC toolset.'
     Info "Adding official MFC x86/x64 component to Visual Studio: $VsRoot"
     Info 'Visual Studio Installer may request administrator permission.'
+    # Prefer the version-matched MFC package for VS2022 v14.44 (17.14);
+    # this exact component ID is listed in Microsoft's VS2022 catalog.
+    $component = 'Microsoft.VisualStudio.Component.VC.ATLMFC'
+    $versionFile = Join-Path $VsRoot 'VC\Auxiliary\Build\Microsoft.VCToolsVersion.default.txt'
+    if (Test-Path -LiteralPath $versionFile -PathType Leaf) {
+        $activeVersion = (Get-Content -LiteralPath $versionFile -TotalCount 1).Trim()
+        if ($activeVersion -like '14.44.*') {
+            $component = 'Microsoft.VisualStudio.Component.VC.14.44.17.14.MFC'
+        }
+    }
+    Info "Installing MFC component: $component"
     $arguments = @('modify', '--installPath', ('"' + $VsRoot + '"'),
-                   '--add', 'Microsoft.VisualStudio.Component.VC.ATLMFC',
-                   '--passive', '--norestart')
+                   '--add', $component, '--passive', '--norestart')
     $process = Start-Process -FilePath $installer -ArgumentList $arguments -Wait -PassThru
     if ($process.ExitCode -notin @(0, 3010)) {
         throw "Visual Studio Installer could not add MFC (exit code $($process.ExitCode)). Open Visual Studio Installer > Modify and enable C++ MFC for x86/x64 manually."
