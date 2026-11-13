@@ -16,6 +16,12 @@ A successful NMAKE launch followed by `fatal error C1083: Cannot open include fi
 
 For Visual Studio 2022 version 17.14 / MSVC 14.44, the version-matched component is `Microsoft.VisualStudio.Component.VC.14.44.17.14.MFC`. If Windows requests administrator permission, approve it. If the installer is not available or cannot complete modification, open **Visual Studio Installer > Modify > Individual components > C++ MFC for v143 build tools (x86 & x64)** and install the matching toolset's component manually. Rerun `INSTALL_AI_TAKEOVER.cmd`.
 
+### If Visual Studio Installer returns exit code 5007
+
+**5007 is Microsoft's `computer does not meet requirements` status**, not a missing MFC component ID. The previous one-click helper used `--passive`, which Microsoft does not permit for standard-user initiated modification; the installer now opens the normal interactive Visual Studio modification UI and requests administrator approval. Complete that window if prompted. If Windows or another prerequisite is unsupported, the installer may still refuse the change—it is not safe to bypass Microsoft's system requirements.
+
+On failure, open **`AI_TAKEOVER_SETUP_DIAGNOSTICS.txt`** in the ArmyMen root folder. It records the Windows build, approximate RAM/free space, setup exit code, and selected error/requirement messages from the latest `dd_setup`, `dd_client`, `dd_bootstrapper`, and `dd_installer` files under `%TEMP%`. Review the excerpts for personal paths before sharing them. The original ArmyMen executable is not replaced when setup fails. Microsoft documents exit codes and full log locations at [Visual Studio installer command-line parameters](https://learn.microsoft.com/en-us/visualstudio/install/use-command-line-parameters-to-install-visual-studio?view=vs-2022).
+
 The build log is now produced directly by NMAKE without PowerShell's extra `NativeCommandError` wrapper around compiler diagnostics. A later failure may identify a distinct 1998-to-modern-MSVC compatibility issue.
 
 **Important limitation:** The original game was built with Visual C++ 4.2 and a late-1990s DirectX SDK. Modern MSVC and Windows SDK installations provide NMAKE and a Win32 compiler, but may still fail to compile historic APIs, MFC usages, build flags or linkage. Fixing the *missing-NMAKE* failure does not mean a full modern-port build has been verified. Never substitute the checked-in historical EXE for a newly compiled AI-patched binary.
