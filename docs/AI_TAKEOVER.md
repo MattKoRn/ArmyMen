@@ -10,6 +10,14 @@ This release turns the **local player's faction** into an AI-run army as soon as
 4. The script runs the legacy NMAKE **Win32 Release executable target** directly, avoiding the obsolete `bscmake` browser target. The compiler output is saved as `AI_TAKEOVER_BUILD.log` in the repo root.
 5. **Only if a patched executable is successfully compiled:** The script backs up the original `src/RunTime/Armymen.exe` as `Armymen.exe.before-ai-takeover`, installs the new binary, then launches ArmyMen. If tool installation, compilation or copying fails, the existing game executable is preserved.
 
+### When the build reports `afxwin.h` is missing
+
+A successful NMAKE launch followed by `fatal error C1083: Cannot open include file: 'afxwin.h'` indicates that the **Microsoft Foundation Classes (MFC)** headers were not installed for the selected C++ toolset. The script now tests for `VC\\Tools\\MSVC\\<version>\\atlmfc\\include\\afxwin.h` before attempting a build. If missing, it invokes the **installed official Visual Studio Installer** in `modify` mode to add x86/x64 MFC to the existing Visual Studio installation, then verifies that the header appears.
+
+For Visual Studio 2022 version 17.14 / MSVC 14.44, the version-matched component is `Microsoft.VisualStudio.Component.VC.14.44.17.14.MFC`. If Windows requests administrator permission, approve it. If the installer is not available or cannot complete modification, open **Visual Studio Installer > Modify > Individual components > C++ MFC for v143 build tools (x86 & x64)** and install the matching toolset's component manually. Rerun `INSTALL_AI_TAKEOVER.cmd`.
+
+The build log is now produced directly by NMAKE without PowerShell's extra `NativeCommandError` wrapper around compiler diagnostics. A later failure may identify a distinct 1998-to-modern-MSVC compatibility issue.
+
 **Important limitation:** The original game was built with Visual C++ 4.2 and a late-1990s DirectX SDK. Modern MSVC and Windows SDK installations provide NMAKE and a Win32 compiler, but may still fail to compile historic APIs, MFC usages, build flags or linkage. Fixing the *missing-NMAKE* failure does not mean a full modern-port build has been verified. Never substitute the checked-in historical EXE for a newly compiled AI-patched binary.
 
 Optional advanced flags (from PowerShell): `-NoPull` builds without a git update, `-SkipToolInstall` refuses automatic Build Tools installation, and `-NoLaunch` builds/installs without starting the game. The command file passes through these flags, for example `INSTALL_AI_TAKEOVER.cmd -NoPull -NoLaunch`.
