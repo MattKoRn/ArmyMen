@@ -10,6 +10,14 @@ This release turns the **local player's faction** into an AI-run army as soon as
 4. The script runs the legacy NMAKE **Win32 Release executable target** directly, avoiding the obsolete `bscmake` browser target. The compiler output is saved as `AI_TAKEOVER_BUILD.log` in the repo root.
 5. **Only if a patched executable is successfully compiled:** The script backs up the original `src/RunTime/Armymen.exe` as `Armymen.exe.before-ai-takeover`, installs the new binary, then launches ArmyMen. If tool installation, compilation or copying fails, the existing game executable is preserved.
 
+### When the compiler cannot open `dplay.h` or `dplobby.h`
+
+These are **DirectPlay 3/4** networking/lobby headers, which the Windows 10/11 SDK no longer provides. The latest DirectX SDK from June 2010 is **not** an answer: Microsoft's **August 2007** release was the last SDK to include DirectPlay headers. To avoid requiring an obsolete SDK download, the repository bundles LGPL-2.1+ DirectPlay-compatible header declarations under `src/third_party/directplay/include/` from the open-source MinGW-w64/Wine project.
+
+The one-click Windows build script checks that both files are present and prepends their directory to the x86 MSVC **INCLUDE** path, after Visual Studio initializes its own include paths. Download **the entire updated `main` repository**, not only the one-click `.cmd` file; otherwise the new headers will be missing. The build helper uses the headers automatically and keeps ArmyMen's existing multiplayer code intact.
+
+These headers provide compile-time interfaces, not a new DirectPlay runtime, and they do not establish that original multiplayer works on modern Windows. Build and runtime compatibility remain to be tested. See [third-party source and LGPL attribution](../src/third_party/directplay/README.md).
+
 ### When the build reports `afxwin.h` is missing
 
 A successful NMAKE launch followed by `fatal error C1083: Cannot open include file: 'afxwin.h'` indicates that the **Microsoft Foundation Classes (MFC)** headers were not installed for the selected C++ toolset. The script now tests for `VC\\Tools\\MSVC\\<version>\\atlmfc\\include\\afxwin.h` before attempting a build. If missing, it invokes the **installed official Visual Studio Installer** in `modify` mode to add x86/x64 MFC to the existing Visual Studio installation, then verifies that the header appears.
